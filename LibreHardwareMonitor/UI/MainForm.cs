@@ -10,12 +10,15 @@ using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime;
+using System.Text;
 using System.Windows.Forms;
 using Aga.Controls.Tree;
 using Aga.Controls.Tree.NodeControls;
 using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Utilities;
 using LibreHardwareMonitor.Wmi;
+using OxyPlot.Series;
 
 namespace LibreHardwareMonitor.UI;
 
@@ -26,7 +29,6 @@ public sealed partial class MainForm : Form
     private readonly SensorGadget _gadget;
     private readonly Logger _logger;
     private readonly UserRadioGroup _loggingInterval;
-    private readonly UserRadioGroup _updateInterval;
     private readonly UserOption _logSensors;
     private readonly UserOption _minimizeOnClose;
     private readonly UserOption _minimizeToTray;
@@ -51,6 +53,9 @@ public sealed partial class MainForm : Form
     private readonly UnitManager _unitManager;
     private readonly UpdateVisitor _updateVisitor = new();
     private readonly WmiProvider _wmiProvider;
+
+    private UserOption _runSerial;
+    private Serial serial;
 
     private int _delayCount;
     private Form _plotForm;
@@ -257,6 +262,51 @@ public sealed partial class MainForm : Form
                 Server.StopHttpListener();
         };
 
+        /**
+         * 
+         * Запуск serial
+         *
+         **/
+        serial = new Serial();
+        _runSerial = new UserOption("runSerialMenuItem", false, runSerialMenuItem, _settings);
+        _runSerial.Changed += delegate (object sender, EventArgs e) {
+            if (_runSerial.Value)
+            {
+                serial.Open();
+            }
+            else
+            {
+                serial.Close();
+            }
+        };
+
+        /**
+         * 
+         * Добавляем порты в меню
+         * 
+         **/ 
+        List<ToolStripMenuItem> portItems = new List<ToolStripMenuItem>();
+
+        foreach (var portName in serial.getPortNames()) {
+            ToolStripMenuItem portItem = new ToolStripMenuItem();
+
+            if (Properties.Default.ComName == portName)
+            {
+                portItem.Checked = true;
+            }
+            portItem.Text = portName;
+            portItem.Click += new EventHandler(this.changeSerialPortEvent);
+            portItems.Add(portItem);
+        }
+
+        if (portItems.ToArray().Length > 0)
+        {
+            this.portToolStripMenuItem.DropDownItems.AddRange(portItems.ToArray());
+        }
+        
+
+
+
         authWebServerMenuItem.Checked = _settings.GetValue("authenticationEnabled", false);
 
         _logSensors = new UserOption("logSensorsMenuItem", false, logSensorsMenuItem, _settings);
@@ -323,44 +373,6 @@ public sealed partial class MainForm : Form
                     break;
                 case 12:
                     _logger.LoggingInterval = new TimeSpan(6, 0, 0);
-                    break;
-            }
-        };
-
-        _updateInterval = new UserRadioGroup("updateIntervalMenuItem",
-                                             2,
-                                             new[]
-                                             {
-                                                 updateInterval250msMenuItem,
-                                                 updateInterval500msMenuItem,
-                                                 updateInterval1sMenuItem,
-                                                 updateInterval2sMenuItem,
-                                                 updateInterval5sMenuItem,
-                                                 updateInterval10sMenuItem
-                                             },
-                                             _settings);
-
-        _updateInterval.Changed += (sender, e) =>
-        {
-            switch (_updateInterval.Value)
-            {
-                case 0:
-                    timer.Interval = 250;
-                    break;
-                case 1:
-                    timer.Interval = 500;
-                    break;
-                case 2:
-                    timer.Interval = 1000;
-                    break;
-                case 3:
-                    timer.Interval = 2000;
-                    break;
-                case 4:
-                    timer.Interval = 5000;
-                    break;
-                case 5:
-                    timer.Interval = 10000;
                     break;
             }
         };
@@ -742,6 +754,10 @@ public sealed partial class MainForm : Form
 
     private void Timer_Tick(object sender, EventArgs e)
     {
+        if (serial.isOpen()) {
+            serial.collectAndWrite(_computer, _settings, _updateVisitor);
+        }
+
         treeView.Invalidate();
         _systemTray.Redraw();
         _gadget?.Redraw();
@@ -1146,5 +1162,32 @@ public sealed partial class MainForm : Form
     private void AuthWebServerMenuItem_Click(object sender, EventArgs e)
     {
         new AuthForm(this).ShowDialog();
+    }
+
+    private void arduinoSystemMonitorToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        new ArduinoDislplays().ShowDialog();
+    }
+
+    private void logSensorsMenuItem_Click(object sender, EventArgs e)
+    {
+
+    }
+
+    public Serial Serial
+    {
+        get { return serial; }
+    }
+
+    private void changeSerialPortEvent(object sender, EventArgs e)
+    {
+        ToolStripMenuItem menuItem = (ToolStripMenuItem)sender;
+        menuItem.Checked = true;
+        serial.Port = menuItem.Text;
+    }
+
+    private void serialToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+
     }
 }

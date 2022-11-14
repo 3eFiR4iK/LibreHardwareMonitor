@@ -118,4 +118,7 @@
     <Compile Remove="Tree\ColumnCollection.cs" />
     <Compile Remove="Tree\NativeMethods.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="OxyPlot.WindowsForms" Version="2.1.0" />
+  </ItemGroup>
 </Project>
